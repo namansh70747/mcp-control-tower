@@ -16,6 +16,25 @@ This addresses two of the gateway's accepted observability epics:
 - [#161](https://github.com/Kuadrant/mcp-gateway/issues/161) — metrics + default Grafana dashboards
 - [#25](https://github.com/Kuadrant/mcp-gateway/issues/25) — Auditing, Logging, and Metrics
 
+## Live demo
+
+Captured against a real MCP Gateway (`make local-env-setup`) with the simulator driving mixed
+traffic — every number below is derived from the gateway's own OTel spans, with no gateway changes.
+
+**Control Tower console (Phase 2)** — live tool-call audit + risk panel flagging misbehaving tools:
+
+![MCP Control Tower console](docs/images/console.png)
+
+**Grafana dashboard (Phase 1)** — per-tool/per-server RED metrics, errors by source, and the
+governance log row, all from the `spanmetrics` connector:
+
+![MCP Control Tower Grafana dashboard](docs/images/grafana-dashboard.png)
+
+**Prometheus** — the MCP RED metrics derived from gateway traces (`mcp_calls_total` by
+`mcp_server`, `gen_ai_tool_name`, `mcp_method_name`, `mcp_status_class`, `error_source`):
+
+![Prometheus spanmetrics](docs/images/prometheus.png)
+
 ## Why it matters
 
 Generic observability stacks see HTTP requests. They do **not** understand MCP: that
