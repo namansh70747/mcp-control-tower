@@ -1,0 +1,65 @@
+# MCP Control Tower
+
+**See and govern every AI tool call flowing through [Kuadrant/mcp-gateway](https://github.com/Kuadrant/mcp-gateway).**
+
+MCP Control Tower is a standalone observability **and governance** layer for the MCP Gateway. It
+turns the traces and logs the gateway *already emits* into MCP-native dashboards and a live
+governance view — **who called which tool, on which server, and was it allowed, denied, or risky.**
+
+It is built entirely on signals present in the gateway's current `main`. No changes to the gateway
+are required: a single OpenTelemetry Collector derives per-tool/per-server RED metrics from the
+gateway's spans (via the `spanmetrics` connector) and risk-tags tool calls from the tool
+annotations the gateway exposes (`destructive`, `openWorld`, …).
+
+This addresses two of the gateway's accepted observability epics:
+
+- [#161](https://github.com/Kuadrant/mcp-gateway/issues/161) — metrics + default Grafana dashboards
+- [#25](https://github.com/Kuadrant/mcp-gateway/issues/25) — Auditing, Logging, and Metrics
+
+## Why it matters
+
+Generic observability stacks see HTTP requests. They do **not** understand MCP: that
+`tools/call` carries a tool name and a target server, that some tools are `destructive` or
+`openWorld`, that `x-mcp-authorized` filtering denied a call, or that an elicitation round-trip
+stalled. Control Tower is **MCP-semantic** — it reads those signals and presents them as the
+questions an MCP gateway operator actually asks.
+
+## Two phases
+
+| Phase | What | Built on |
+|---|---|---|
+| **1 — Observability & Governance Plane** | One-command stack (Collector + Tempo + Loki + Prometheus + Grafana) with MCP-native dashboards and a traffic simulator. | Gateway spans/logs today. |
+| **2 — Control Tower console** | A Go service + lightweight web UI: live tool-call map, per-user/per-tool audit trail, and a risk panel. | Same signals, MCP-aware model. |
+
+## Quick start
+
+```bash
+make up        # kind + mcp-gateway + observability/governance stack
+make traffic   # drive mixed MCP traffic (success, errors, elicitation, multi-server)
+make forward   # Grafana on http://localhost:3000  (console on :8080 in Phase 2)
+make down      # tear it all down
+./demo.sh      # one-shot narrated demo
+```
+
+## What you see
+
+- **Tool-call rate / latency (p50/p95/p99) by server and tool** — from gateway spans.
+- **Error & 404 attribution** — by `error_source` (router vs broker vs upstream).
+- **Authorization denials & capability filtering** — from `x-mcp-authorized` activity.
+- **Elicitation funnel** — `tools/call` → `elicitation/create` → completion.
+- **Governance row** — who → what tool → allowed/denied, with risk flags for
+  `destructive` / `openWorld` tools.
+
+## Layout
+
+```
+deploy/       collector + tempo + loki + prometheus + grafana manifests
+enrichment/   collector config: spanmetrics connector + MCP risk tagging
+dashboards/   MCP-native Grafana dashboard JSON
+simulator/    traffic generator (reuses the gateway's test servers)
+console/       Phase 2: Go backend + web UI
+docs/         architecture, walkthrough, and the integration pitch
+```
+
+> Not affiliated with or endorsed by the Kuadrant project. A demonstration built on top of the
+> open-source MCP Gateway.

@@ -1,0 +1,170 @@
+# MCP Control Tower — OpenTelemetry Collector with MCP-semantic enrichment.
+#
+# The novelty lives here. The MCP Gateway emits spans for every request with
+# attributes like gen_ai.tool.name, mcp.server, mcp.method.name and
+# http.status_code, but it exposes NO per-tool/per-server metrics today
+# (PR #1044 adds only infrastructure counters, and not tool-call RED metrics).
+#
+# This collector derives those metrics itself, from the spans the gateway
+# already produces, using the `spanmetrics` connector. Result: rate / errors /
+# duration per tool and per server land in Prometheus with zero gateway changes.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: observability
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      batch:
+        timeout: 1s
+        send_batch_size: 1024
+
+      # Normalize an http status code into a low-cardinality class (2xx/4xx/5xx)
+      # so dashboards can chart success-vs-error without exploding label values.
+      # Safe when the attribute is absent (statements simply do not match).
+      transform/mcp:
+        error_mode: ignore
+        trace_statements:
+          - context: span
+            statements:
+              - set(attributes["mcp.status_class"], "2xx") where attributes["http.status_code"] >= 200 and attributes["http.status_code"] < 300
+              - set(attributes["mcp.status_class"], "4xx") where attributes["http.status_code"] >= 400 and attributes["http.status_code"] < 500
+              - set(attributes["mcp.status_class"], "5xx") where attributes["http.status_code"] >= 500
+              - set(attributes["mcp.status_class"], "error") where status.code == STATUS_CODE_ERROR and attributes["mcp.status_class"] == nil
+
+    connectors:
+      # Derive RED metrics from gateway spans. Dimensions become Prometheus
+      # labels, so we can slice tool-call traffic by server, tool, method and
+      # outcome — the exact breakdown epic #161 asks for.
+      spanmetrics:
+        namespace: mcp
+        histogram:
+          explicit:
+            buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
+        dimensions:
+          - name: mcp.server
+          - name: gen_ai.tool.name
+          - name: mcp.method.name
+          - name: mcp.status_class
+          - name: error_source
+        exemplars:
+          enabled: true
+        metrics_flush_interval: 15s
+
+    exporters:
+      # traces -> Tempo
+      otlp/tempo:
+        endpoint: tempo:4317
+        tls:
+          insecure: true
+
+      # logs -> Loki
+      loki:
+        endpoint: http://loki:3100/loki/api/v1/push
+
+      # derived metrics -> Prometheus scrape endpoint on :8889
+      prometheus:
+        endpoint: 0.0.0.0:8889
+        enable_open_metrics: true
+        add_metric_suffixes: true
+        resource_to_telemetry_conversion:
+          enabled: true
+
+      debug:
+        verbosity: normal
+
+    service:
+      pipelines:
+        # spans flow to Tempo AND into the spanmetrics connector
+        traces:
+          receivers: [otlp]
+          processors: [transform/mcp, batch]
+          exporters: [otlp/tempo, spanmetrics, debug]
+        # spanmetrics connector emits metrics -> Prometheus
+        metrics/spanmetrics:
+          receivers: [spanmetrics]
+          processors: [batch]
+          exporters: [prometheus]
+        # any OTLP metrics the gateway pushes (e.g. once PR #1044 lands) also flow through
+        metrics/otlp:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [prometheus]
+        logs:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [loki, debug]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: observability
+  labels:
+    app: otel-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.96.0
+          args:
+            - --config=/etc/otel/config.yaml
+          ports:
+            - containerPort: 4317
+              name: otlp-grpc
+            - containerPort: 4318
+              name: otlp-http
+            - containerPort: 8889
+              name: prom-metrics
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "300m"
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: observability
+  labels:
+    app: otel-collector
+spec:
+  selector:
+    app: otel-collector
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+    - name: prom-metrics
+      port: 8889
+      targetPort: 8889

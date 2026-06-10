@@ -1,0 +1,18 @@
+# Optional: for real clusters running prometheus-operator.
+# The bundled deploy/prometheus.yaml already scrapes the collector statically,
+# so this is NOT applied by `make up`. Apply it only where the ServiceMonitor
+# CRD exists:  kubectl apply -f deploy/servicemonitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: otel-collector-spanmetrics
+  namespace: observability
+  labels:
+    app: mcp-control-tower
+spec:
+  selector:
+    matchLabels:
+      app: otel-collector
+  endpoints:
+    - port: prom-metrics
+      interval: 15s

@@ -1,0 +1,11 @@
+# build artifacts
+/bin/
+console/backend/mcp-control-tower
+console/frontend/node_modules/
+console/frontend/dist/
+
+# local state
+*.log
+.DS_Store
+kubeconfig
+*.tmp
