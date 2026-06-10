@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -11,6 +12,15 @@ import (
 	"strings"
 	"time"
 )
+
+// clean replaces NaN/Inf (e.g. from histogram_quantile over empty buckets) with
+// 0 — otherwise encoding/json fails and the whole response comes back empty.
+func clean(f float64) float64 {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0
+	}
+	return f
+}
 
 // promClient is a tiny Prometheus HTTP API client (stdlib only).
 type promClient struct {
@@ -70,7 +80,7 @@ func (p *promClient) scalar(ctx context.Context, q string) float64 {
 	if err != nil || len(res) == 0 {
 		return 0
 	}
-	return res[0].Value
+	return clean(res[0].Value)
 }
 
 // Model is the MCP-aware view the console serves.
@@ -119,21 +129,21 @@ func (p *promClient) buildModel(ctx context.Context, highRisk map[string]bool) M
 	}
 	for _, r := range rate {
 		if t := get(r.Metric); t != nil {
-			t.RatePerMin = r.Value
+			t.RatePerMin = clean(r.Value)
 		}
 	}
 	errByKey := map[key]float64{}
 	for _, r := range errs {
-		errByKey[key{r.Metric["mcp_server"], r.Metric["gen_ai_tool_name"]}] = r.Value
+		errByKey[key{r.Metric["mcp_server"], r.Metric["gen_ai_tool_name"]}] = clean(r.Value)
 	}
 	for _, r := range p95 {
 		if t := get(r.Metric); t != nil {
-			t.P95ms = r.Value
+			t.P95ms = clean(r.Value)
 		}
 	}
 	for k, t := range rows {
 		if t.RatePerMin > 0 {
-			t.ErrorRate = errByKey[k] / t.RatePerMin
+			t.ErrorRate = clean(errByKey[k] / t.RatePerMin)
 		}
 		t.Risk = classifyRisk(t, highRisk)
 		m.Tools = append(m.Tools, *t)

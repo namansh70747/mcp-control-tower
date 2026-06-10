@@ -42,7 +42,11 @@ make traffic        # or: WORKERS=6 RPS=8 ERROR_PCT=20 make traffic
 ```
 
 The simulator connects with the real MCP client, lists tools, and issues a mix of successful and
-deliberately failing `tools/call`s.
+deliberately failing `tools/call`s. It targets the **Envoy data path**
+(`http://mcp.127-0-0-1.sslip.io:8001/mcp`, what `make local-env-setup` exposes) — this matters:
+the router only parses `tools/call` and emits the tool-call spans (`gen_ai.tool.name`,
+`mcp.method.name`) on that path. Hitting the broker pod directly bypasses the router, so the
+per-tool panels would stay empty. Override with `GATEWAY_URL=...` if your gateway differs.
 
 ## 4. Watch it light up
 
