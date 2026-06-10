@@ -8,13 +8,18 @@ governance view — **who called which tool, on which server, and was it allowed
 
 It is built entirely on signals present in the gateway's current `main`. No changes to the gateway
 are required: a single OpenTelemetry Collector derives per-tool/per-server RED metrics from the
-gateway's spans (via the `spanmetrics` connector) and risk-tags tool calls from the tool
-annotations the gateway exposes (`destructive`, `openWorld`, …).
+gateway's spans (via the `spanmetrics` connector), and the console flags risky tools from their
+observed error rate and latency (plus an optional high-risk allowlist).
 
-This addresses two of the gateway's accepted observability epics:
+It delivers the dashboards + per-tool/server metrics + traffic-visibility that two accepted
+observability epics target — on current `main`, no gateway changes:
 
 - [#161](https://github.com/Kuadrant/mcp-gateway/issues/161) — metrics + default Grafana dashboards
 - [#25](https://github.com/Kuadrant/mcp-gateway/issues/25) — Auditing, Logging, and Metrics
+
+For the exact, honest scope — what's covered, what's partial, and what needs gateway-side data
+(per-user metrics, payload sizes, identity audit trail) — see [docs/coverage.md](docs/coverage.md)
+and the metric catalog in [docs/METRICS.md](docs/METRICS.md).
 
 ## Live demo
 

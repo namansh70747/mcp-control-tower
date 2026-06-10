@@ -26,7 +26,7 @@
       "title": "Tool calls / min",
       "gridPos": {
         "h": 4,
-        "w": 6,
+        "w": 5,
         "x": 0,
         "y": 0
       },
@@ -62,8 +62,8 @@
       "title": "Error rate",
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 6,
+        "w": 5,
+        "x": 5,
         "y": 0
       },
       "datasource": {
@@ -106,8 +106,8 @@
       "title": "p95 latency",
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 12,
+        "w": 5,
+        "x": 10,
         "y": 0
       },
       "datasource": {
@@ -150,8 +150,8 @@
       "title": "Active MCP servers",
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 18,
+        "w": 5,
+        "x": 15,
         "y": 0
       },
       "datasource": {
@@ -379,6 +379,42 @@
         "wrapLogMessage": true,
         "dedupStrategy": "none",
         "enableLogDetails": true
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Tools seen",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(group by (gen_ai_tool_name) (mcp_calls_total{gen_ai_tool_name!=\"\"}))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        }
       }
     }
   ]
