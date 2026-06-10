@@ -1,0 +1,57 @@
+# Deploy the Control Tower console into the cluster, reading from Prometheus.
+# Build/load the image first (e.g. `make -C console/backend image` + kind load),
+# then `kubectl apply -f console/k8s.yaml`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-tower-console
+  namespace: observability
+  labels:
+    app: control-tower-console
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: control-tower-console
+  template:
+    metadata:
+      labels:
+        app: control-tower-console
+    spec:
+      containers:
+        - name: console
+          image: mcp-control-tower-console:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: PROMETHEUS_URL
+              value: http://prometheus:9090
+            # comma-separated tools to always flag high-risk, e.g. "delete_repo,exec"
+            - name: HIGH_RISK_TOOLS
+              value: ""
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "25m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-tower-console
+  namespace: observability
+spec:
+  selector:
+    app: control-tower-console
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

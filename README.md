@@ -34,11 +34,20 @@ questions an MCP gateway operator actually asks.
 ## Quick start
 
 ```bash
-make up        # kind + mcp-gateway + observability/governance stack
-make traffic   # drive mixed MCP traffic (success, errors, elicitation, multi-server)
-make forward   # Grafana on http://localhost:3000  (console on :8080 in Phase 2)
+make up        # observability/governance stack + wire the gateway to it
+make traffic   # drive mixed MCP traffic (success + deliberate errors)
+make forward   # Grafana on http://localhost:3000, Prometheus on :9090
 make down      # tear it all down
 ./demo.sh      # one-shot narrated demo
+```
+
+Phase 2 — the Control Tower console:
+
+```bash
+make forward                      # (Prometheus must be reachable)
+make console                      # run the console locally on http://localhost:8080
+# or, in-cluster:
+make console-deploy && make console-forward
 ```
 
 ## What you see
@@ -52,7 +61,7 @@ make down      # tear it all down
 
 ## Layout
 
-```
+```text
 deploy/       collector + tempo + loki + prometheus + grafana manifests
 enrichment/   collector config: spanmetrics connector + MCP risk tagging
 dashboards/   MCP-native Grafana dashboard JSON

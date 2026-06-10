@@ -9,3 +9,7 @@ console/frontend/dist/
 .DS_Store
 kubeconfig
 *.tmp
+
+# go build artifacts
+simulator/simulator
+console/backend/bin/

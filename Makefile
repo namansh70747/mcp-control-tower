@@ -9,6 +9,7 @@ GATEWAY_DEPLOY    ?= mcp-gateway
 OBS_NS            ?= observability
 OTEL_COLLECTOR    ?= http://otel-collector.$(OBS_NS).svc.cluster.local:4318
 DASHBOARDS_CM     ?= mcp-control-tower-dashboards
+KIND_CLUSTER      ?= mcp-gateway
 
 .DEFAULT_GOAL := help
 
@@ -73,5 +74,18 @@ traffic: ## Drive mixed MCP traffic so the dashboards light up
 	./simulator/traffic.sh
 
 .PHONY: console
-console: ## Phase 2: build and run the Control Tower console
+console: ## Phase 2: run the Control Tower console locally (needs `make forward` for Prometheus)
 	$(MAKE) -C console/backend run
+
+.PHONY: console-deploy
+console-deploy: ## Phase 2: build image, load into kind, deploy console in-cluster
+	$(MAKE) -C console/backend image
+	kind load docker-image mcp-control-tower-console:dev --name $(KIND_CLUSTER) 2>/dev/null || \
+		echo "note: set KIND_CLUSTER=<name> if your kind cluster differs"
+	kubectl apply -f console/k8s.yaml
+	@kubectl rollout status deployment/control-tower-console -n $(OBS_NS) --timeout=120s
+
+.PHONY: console-forward
+console-forward: ## Phase 2: port-forward the in-cluster console (8080)
+	@echo "Console: http://localhost:8080"
+	@kubectl port-forward -n $(OBS_NS) svc/control-tower-console 8080:8080

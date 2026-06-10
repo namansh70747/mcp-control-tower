@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MCP Control Tower</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --line:#30363d; --fg:#e6edf3; --muted:#8b949e;
+          --ok:#3fb950; --elevated:#d29922; --high:#f85149; --accent:#58a6ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 ui-sans-serif,system-ui,sans-serif; }
+  header { padding:16px 24px; border-bottom:1px solid var(--line); display:flex; align-items:baseline; gap:12px; }
+  header h1 { font-size:18px; margin:0; }
+  header .sub { color:var(--muted); font-size:12px; }
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block; background:var(--high); }
+  .dot.live { background:var(--ok); }
+  main { padding:24px; max-width:1100px; margin:0 auto; }
+  .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; }
+  .card .label { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+  .card .value { font-size:28px; font-weight:600; margin-top:4px; }
+  h2 { font-size:14px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:24px 0 8px; }
+  table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  th,td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:500; font-size:12px; text-transform:uppercase; }
+  tr:last-child td { border-bottom:none; }
+  td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .pill { padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; }
+  .pill.ok { background:rgba(63,185,80,.15); color:var(--ok); }
+  .pill.elevated { background:rgba(210,153,34,.15); color:var(--elevated); }
+  .pill.high { background:rgba(248,81,73,.15); color:var(--high); }
+  .empty { color:var(--muted); padding:24px; text-align:center; }
+  footer { color:var(--muted); font-size:12px; padding:16px 24px; border-top:1px solid var(--line); }
+  code { color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>MCP Control Tower</h1>
+  <span class="sub">see &amp; govern every AI tool call · <span id="status"><span class="dot"></span> connecting…</span></span>
+</header>
+<main>
+  <div class="cards">
+    <div class="card"><div class="label">Tool calls / min</div><div class="value" id="cpm">—</div></div>
+    <div class="card"><div class="label">Error rate</div><div class="value" id="err">—</div></div>
+    <div class="card"><div class="label">p95 latency</div><div class="value" id="p95">—</div></div>
+    <div class="card"><div class="label">Active servers</div><div class="value" id="srv">—</div></div>
+  </div>
+
+  <h2>Risk panel — tools needing attention</h2>
+  <table id="risk-table">
+    <thead><tr><th>Server</th><th>Tool</th><th class="num">calls/min</th><th class="num">error rate</th><th class="num">p95</th><th>risk</th></tr></thead>
+    <tbody><tr><td class="empty" colspan="6">waiting for data…</td></tr></tbody>
+  </table>
+
+  <h2>Tool-call audit — who is calling what</h2>
+  <table id="audit-table">
+    <thead><tr><th>Server</th><th>Tool</th><th class="num">calls/min</th><th class="num">error rate</th><th class="num">p95</th><th>risk</th></tr></thead>
+    <tbody><tr><td class="empty" colspan="6">waiting for data…</td></tr></tbody>
+  </table>
+</main>
+<footer>
+  Metrics derived from the gateway's OTel spans via the <code>spanmetrics</code> connector — no gateway changes.
+  Source: <span id="source">—</span>
+</footer>
+
+<script>
+const pct = x => (x*100).toFixed(1) + "%";
+const ms  = x => Math.round(x) + " ms";
+const num = x => (x >= 10 ? Math.round(x) : x.toFixed(1));
+
+function rows(tbody, list) {
+  if (!list.length) { tbody.innerHTML = '<tr><td class="empty" colspan="6">no tool calls yet — run the simulator</td></tr>'; return; }
+  tbody.innerHTML = list.map(t => `
+    <tr>
+      <td>${t.server || "—"}</td>
+      <td>${t.tool}</td>
+      <td class="num">${num(t.ratePerMin)}</td>
+      <td class="num">${pct(t.errorRate)}</td>
+      <td class="num">${ms(t.p95ms)}</td>
+      <td><span class="pill ${t.risk}">${t.risk}</span></td>
+    </tr>`).join("");
+}
+
+function render(m) {
+  document.getElementById("cpm").textContent = num(m.callsPerMin);
+  document.getElementById("err").textContent = pct(m.errorRate);
+  document.getElementById("p95").textContent = ms(m.p95ms);
+  document.getElementById("srv").textContent = m.activeServers;
+  document.getElementById("source").textContent = m.source;
+  const tools = m.tools || [];
+  rows(document.querySelector("#risk-table tbody"), tools.filter(t => t.risk !== "ok"));
+  rows(document.querySelector("#audit-table tbody"), tools);
+  const s = document.getElementById("status");
+  s.innerHTML = '<span class="dot live"></span> live · ' + new Date(m.generatedAt).toLocaleTimeString();
+}
+
+const es = new EventSource("/api/stream");
+es.onmessage = e => { try { render(JSON.parse(e.data)); } catch (_) {} };
+es.onerror = () => { document.getElementById("status").innerHTML = '<span class="dot"></span> reconnecting…'; };
+</script>
+</body>
+</html>
